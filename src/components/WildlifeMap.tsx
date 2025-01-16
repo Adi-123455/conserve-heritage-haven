@@ -1,6 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import React from 'react';
 
 // Sample wildlife population data
 const wildlifeData = [
@@ -12,80 +10,86 @@ const wildlifeData = [
 ];
 
 const WildlifeMap = () => {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const [mapboxToken, setMapboxToken] = useState('');
+  const [selectedPoint, setSelectedPoint] = React.useState<number | null>(null);
 
-  useEffect(() => {
-    if (!mapContainer.current) return;
+  // Calculate the size of the point based on population
+  const getPointSize = (population: number) => {
+    const baseSize = 8;
+    const scale = population / 500; // Adjust scale based on population
+    return Math.max(baseSize, Math.min(baseSize * scale, 40)); // Min 8px, max 40px
+  };
 
-    // Initialize map
-    mapboxgl.accessToken = mapboxToken || 'pk.placeholder'; // Replace with actual token
-    
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12',
-      center: [78.9629, 20.5937], // Center on India
-      zoom: 4,
-      pitch: 45,
-    });
-
-    // Add navigation controls
-    map.current.addControl(
-      new mapboxgl.NavigationControl({
-        visualizePitch: true,
-      }),
-      'top-right'
-    );
-
-    // Add markers for wildlife populations
-    map.current.on('load', () => {
-      wildlifeData.forEach((animal) => {
-        const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
-          `<div class="bg-white p-3 rounded-lg shadow-lg">
-            <h3 class="font-bold text-lg text-forest">${animal.species}</h3>
-            <p class="text-sm text-gray-600">Population: ${animal.population}</p>
-            <p class="text-sm text-gray-600">Region: ${animal.region}</p>
-          </div>`
-        );
-
-        new mapboxgl.Marker({
-          color: '#2E7D32',
-        })
-          .setLngLat(animal.coordinates)
-          .setPopup(popup)
-          .addTo(map.current!);
-      });
-    });
-
-    // Cleanup
-    return () => {
-      map.current?.remove();
-    };
-  }, [mapboxToken]);
-
-  // Token input field for demo purposes
-  const handleTokenInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMapboxToken(e.target.value);
+  // Convert geographic coordinates to relative positions in the container
+  const getRelativePosition = (coordinates: number[]) => {
+    // Map longitude (65°E to 95°E) and latitude (5°N to 35°N) to container dimensions
+    const x = ((coordinates[0] - 65) / (95 - 65)) * 100;
+    const y = ((35 - coordinates[1]) / (35 - 5)) * 100;
+    return { x, y };
   };
 
   return (
-    <div className="relative w-full h-[calc(100vh-4rem)]">
-      {!mapboxToken && (
-        <div className="absolute top-0 left-0 right-0 z-10 bg-white p-4 shadow-md">
-          <input
-            type="text"
-            placeholder="Enter your Mapbox token"
-            className="w-full p-2 border rounded"
-            onChange={handleTokenInput}
-          />
-          <p className="text-sm text-gray-500 mt-1">
-            Visit mapbox.com to get your public token
-          </p>
+    <div className="relative w-full h-[calc(100vh-4rem)] bg-cream p-4">
+      <div className="absolute inset-4 border-2 border-forest rounded-lg bg-white/50">
+        {/* Grid lines */}
+        <div className="absolute inset-0 grid grid-cols-6 grid-rows-6">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={`v-${i}`} className="border-r border-forest/20 h-full" />
+          ))}
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={`h-${i}`} className="border-b border-forest/20 w-full" />
+          ))}
         </div>
-      )}
-      <div ref={mapContainer} className="absolute inset-0 map-container" />
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent to-background/10 rounded-lg" />
+
+        {/* Points */}
+        {wildlifeData.map((animal) => {
+          const pos = getRelativePosition(animal.coordinates);
+          const size = getPointSize(animal.population);
+
+          return (
+            <div
+              key={animal.id}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+              style={{
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+              }}
+              onMouseEnter={() => setSelectedPoint(animal.id)}
+              onMouseLeave={() => setSelectedPoint(null)}
+            >
+              <div
+                className="rounded-full bg-forest transition-all duration-300"
+                style={{
+                  width: `${size}px`,
+                  height: `${size}px`,
+                  opacity: selectedPoint === animal.id ? 1 : 0.6,
+                }}
+              />
+              
+              {/* Popup */}
+              {selectedPoint === animal.id && (
+                <div className="absolute z-10 bg-white p-3 rounded-lg shadow-lg -translate-x-1/2 -translate-y-full mb-2 whitespace-nowrap">
+                  <h3 className="font-bold text-lg text-forest">{animal.species}</h3>
+                  <p className="text-sm text-gray-600">Population: {animal.population}</p>
+                  <p className="text-sm text-gray-600">Region: {animal.region}</p>
+                  <p className="text-sm text-gray-600">
+                    Coordinates: {animal.coordinates[1]}°N, {animal.coordinates[0]}°E
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Coordinate labels */}
+        <div className="absolute -bottom-6 left-0 right-0 flex justify-between px-4 text-sm text-forest">
+          <span>65°E</span>
+          <span>95°E</span>
+        </div>
+        <div className="absolute -left-6 top-0 bottom-0 flex flex-col justify-between py-4 text-sm text-forest">
+          <span>35°N</span>
+          <span>5°N</span>
+        </div>
+      </div>
     </div>
   );
 };
